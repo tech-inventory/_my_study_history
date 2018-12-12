@@ -1,0 +1,217 @@
+●Kaggle:Two Sigma Competition
+  
+o データの解説
+  https://www.kaggle.com/c/two-sigma-financial-news/data
+  
+  ダウンロードできるデータは100件の本当にサンプルでしかなく、
+  実際にトレーニングに使うデータは、カーネル内で env.get_training_data() を実施しなければならない模様。
+  
+  まずは、各データの仕様を眺めてみる。
+  
+  
+* マーケットデータ
+  
+  assetCode : 銘柄コード。
+              例) AKAM.O
+              
+  assetName : 銘柄名
+              例) Akamai Technologies Inc
+              
+  universe  : 0 or 1 
+              サンプルでは、0が32件、1が68件。
+              その日の計測が、結果に含まれるかどうか。トレーニングデータにだけ含まれる。
+              
+  
+  volume    : 出来高
+              例) 2801000.0
+              出来高が小さい銘柄がほとんど。zipf分布か。
+              
+  close/open : 終値/始値
+               例) close = 55.51 , open = 56.61
+               
+  
+  
+  リターンは、始値同士、または終値同士の比較で求める。
+  リターンは、調整がない生の値のままか、マーケット全体の動きを考慮した market-residualized かどちらか。
+  リターンは、任意の期間に対して計算される。(１日～１０日の間で期間は変化する）
+  以前の値との比較のリターンには接頭辞 prev が、未来の値との比較のリターンには接頭辞 Nextがつく。
+  
+    returnsClosePrevRaw1(float64) - １日前の終値同士の比較
+    returnsOpenPrevRaw1(float64) - １日前の始値同士の比較
+    returnsClosePrevMktres1(float64) - １日前の終値同士の比較(マーケット残差比較）  Nullが多い。
+    returnsOpenPrevMktres1(float64) - see returns explanation above
+    returnsClosePrevRaw10(float64) - see returns explanation above
+    returnsOpenPrevRaw10(float64) - see returns explanation above
+    returnsClosePrevMktres10(float64) - サンプルでは見当たらず
+    returnsOpenPrevMktres10(float64) - サンプルでは見当たらず
+    returnsOpenNextMktres10(float64) - 10 day, これの値はサンプルにもセットされている。これが目的変数。
+                                        market-residualized return. 
+                                        This is the target variable used in competition scoring. 
+                                        The market data has been filtered such that 
+                                        returnsOpenNextMktres10 is always not null.
+                                        
+                                        サンプルでは -0.10 ～　0.14 の間で分布している。
+                                        
+
+
+* ニュースデータ
+
+    time(datetime64[ns, UTC]) :
+    UTC timestamp showing when the data was available on the feed (second precision)
+    ニュースが入手可能になった日時
+    
+    sourceTimestamp(datetime64[ns, UTC]) :
+    UTC timestamp of this news item when it was created
+    ニュースが生成された日時
+    
+    firstCreated(datetime64[ns, UTC]) :
+    UTC timestamp for the first version of the item
+    最初のバージョンが生成された日時
+    
+    sourceId(object) :
+     an Id for each news item
+    
+    headline(object) :
+    the item's headline
+    記事のヘッドライン。
+    例) "PRESS DIGEST - Wall Street Journal - Jan 1"
+    
+    urgency(int8) :
+    differentiates story types (1: alert, 3: article)
+    ニュースの緊急度。1はアラート、3は記事
+    
+    takeSequence(int16) :
+    the take sequence number of the news item, starting at 1. 
+    For a given story, alerts and articles have separate sequences.
+    ほとんどのサンプルでは1
+    
+    
+    provider(category) :
+    identifier for the organization which provided the news item (e.g. RTRS for Reuters News, BSW for Business Wire)
+    ニュース提供源。ロイター(RTRS)かビジネスワイヤ(BSW)の二つ。
+    サンプルでは RTRS が 87％で圧倒的に多い。
+    
+    subjects(category) :
+    topic codes and company identifiers that relate to this news item. 
+    Topic codes describe the news item's subject matter. 
+    These can cover asset classes, geographies, events, industries/sectors, and other types.
+    ニュースに関連がある企業、産業、タグなどのリスト。
+    こいつを解析すると良いことがあるのだろうか？
+    例) {'BD', 'INS', 'LATAM', 'CA', 'US', 'MX', 'IL', 'LIF', 'RTRS', 'FEA', 'LEN', 'MEAST', 'CO', 'ASIA', 'HT'}
+    
+    
+    audiences(category) ：
+    identifies which desktop news product(s) the news item belongs to. 
+    They are typically tailored to specific audiences. 
+    (e.g. "M" for Money International News Service and "FB" for French General News Service)
+    
+    各記事がどのデスクトップニュース製品に所属しているのかを表す。
+    productごとに傾向や信頼性の違いなどがあるのではないか。
+    {'PGE', 'PCU', 'PCO', 'DNP', 'MD', 'E', 'G', 'PSC', 'ESN', 'U', 'RNP'}	
+    
+    
+    bodySize(int32) :
+    the size of the current version of the story body in characters
+    
+    companyCount(int8) :
+    the number of companies explicitly listed in the news item in the subjects field
+    記事中で明確に記載されている企業の数。
+    
+    
+    headlineTag(object) ：
+    the Thomson Reuters headline tag for the news item
+    先ほどの subjects や audiences と比べるとシンプルである。スペース区切りか。
+    例) "PRESS DIGEST" 
+    
+    
+    marketCommentary(bool) :
+    boolean indicator that the item is discussing general market conditions, such as "After the Bell" summaries
+    記事がマーケット全体について議論する内容かどうか。
+    
+    
+    sentenceCount(int16) ：
+    the total number of sentences in the news item. 
+    Can be used in conjunction with firstMentionSentence to determine the relative position of
+    the first mention in the item.
+    文の数。
+    
+    
+    wordCount(int32) : 
+    the total number of lexical tokens (words and punctuation) in the news item
+    
+    assetCodes(category) :
+    list of assets mentioned in the item
+    例) {'GOOG.O', 'GOOG.OQ', 'GOOGa.DE'}
+    
+    assetName(category) :
+    name of the asset
+    例) "Google Inc"
+    
+    firstMentionSentence(int16) :
+    the first sentence, starting with the headline, in which the scored asset is mentioned.
+    銘柄が言及された最初の文の位置。
+    銘柄の扱いの大きさを図ることが出来る。
+    
+    1: headline
+    2: first sentence of the story body
+    3: second sentence of the body, etc
+    0: the asset being scored was not found in the news item's headline or body text. 
+       As a result, the entire news item's text (headline + body) will be used to determine the sentiment score.
+    
+    
+    
+    relevance(float32) ： 関連性
+    a decimal number indicating the relevance of the news item to the asset. 
+    It ranges from 0 to 1. If the asset is mentioned in the headline, the relevance is set to 1. 
+    When the item is an alert (urgency == 1), relevance should be gauged by firstMentionSentence instead.
+    その記事の銘柄との関連性を[0,1]で表した値。
+    ヘッドラインで言及されていれば1。
+    
+    
+    sentimentClass(int8) :
+    indicates the predominant sentiment class for this news item with respect to the asset. 
+    The indicated class is the one with the highest probability.
+    -1,0,1 の値をとる。
+    ネガティブならば -1
+    中立は 0
+    ポジティブならば 1
+    
+    sentimentNegative(float32) :
+    probability that the sentiment of the news item was negative for the asset
+    
+    sentimentNeutral(float32) :
+    probability that the sentiment of the news item was neutral for the asset
+    
+    sentimentPositive(float32) :
+    probability that the sentiment of the news item was positive for the asset
+    
+    sentimentWordCount(int32) :
+    the number of lexical tokens in the sections of the item text that are deemed relevant to the asset. 
+    This can be used in conjunction with wordCount to determine the proportion of the news item discussing the asset.
+    
+    noveltyCount12H(int16) :
+    １２時間における記事内容の新鮮さ？
+    The 12 hour novelty of the content within a news item on a particular asset. 
+    It is calculated by comparing it with the asset-specific text over a cache of previous 
+    news items that contain the asset.
+    
+    同じ銘柄について触れている過去記事と比較して計算する。
+    
+    
+    noveltyCount24H(int16) - same as above, but for 24 hours
+    noveltyCount3D(int16) - same as above, but for 3 days
+    noveltyCount5D(int16) - same as above, but for 5 days
+    noveltyCount7D(int16) - same as above, but for 7 days
+    
+    volumeCounts12H(int16) ：
+    the 12 hour volume of news for each asset. 
+    A cache of previous news items is maintained and 
+    the number of news items that mention the asset within each of five historical periods is calculated.
+    過去の５時点において銘柄に言及した記事の数を得る。
+    
+    
+    
+    volumeCounts24H(int16) - same as above, but for 24 hours
+    volumeCounts3D(int16) - same as above, but for 3 days
+    volumeCounts5D(int16) - same as above, but for 5 days
+    volumeCounts7D(int16) - same as above, but for 7 days
